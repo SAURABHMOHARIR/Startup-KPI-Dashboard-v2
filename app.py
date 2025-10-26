@@ -1,60 +1,94 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+from streamlit_autorefresh import st_autorefresh
 
-# --- Load Data ---
-df = pd.read_csv('kpi_data.csv')
+# -------------------------------
+# ⚙️ App Configuration
+# -------------------------------
+st.set_page_config(page_title="Startup KPI Dashboard", layout="wide")
 
-# --- Page Title ---
-st.title("🚀 Startup KPI Dashboard - Data-Driven OKR Tracking")
-st.caption("Simulated business metrics for a growing SaaS startup (like SalesCode.ai)")
+# -------------------------------
+# 🔁 Auto-refresh every 5 seconds
+# -------------------------------
+count = st_autorefresh(interval=5000, limit=None, key="datarefresh")
 
-# --- Key Metrics ---
-st.subheader("📈 Key Highlights")
-col1, col2, col3 = st.columns(3)
-col1.metric("Avg. Monthly Revenue", f"${df['Revenue'].mean():,.0f}")
-col2.metric("Avg. Active Users", f"{df['ActiveUsers'].mean():,.0f}")
-col3.metric("Avg. Churn Rate", f"{df['ChurnRate'].mean():.2f}%")
+# -------------------------------
+# 🔗 Google Sheets Live Data
+# -------------------------------
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVfWFKVbiQ3bnvaTn0I7NCjAMddv1ezKRm7lWGctNI01PCAFNAwhsFNVEHrD9DNUHRggW8LOWy0jzA/pub?output=csv"  # <--- replace with your link
 
-# --- Charts ---
-# --- Charts ---
-st.subheader("📊 Revenue and Active Users Over Time")
+@st.cache_data(ttl=5)
+def load_data():
+    try:
+        df = pd.read_csv(SHEET_URL)
+        df.columns = df.columns.str.strip()  # remove stray spaces
+        return df
+    except Exception as e:
+        st.error(f"Error fetching or parsing data: {e}")
+        return pd.DataFrame()  # return empty dataframe safely
 
-# Create better formatted line charts
-st.line_chart(data=df[['Revenue', 'ActiveUsers']].set_index(df['Month']))
+# Load the live data
+data = load_data()
 
-st.subheader("💰 CAC and LTV Comparison")
-chart_data = df[['Month', 'CAC', 'LTV']].set_index('Month')
-st.line_chart(chart_data)
+# -------------------------------
+# 🚀 Title
+# -------------------------------
+st.title("🚀 Startup KPI Dashboard — Live Google Sheets Sync")
 
-st.subheader("📉 Churn Rate Trend")
-st.bar_chart(df.set_index('Month')['ChurnRate'])
+# -------------------------------
+# 🧩 KPI Metrics Section
+# -------------------------------
+if not data.empty:
+    st.subheader("📊 Key Performance Indicators")
 
+    total_revenue = data["Revenue"].sum()
+    avg_churn = data["ChurnRate"].mean()
+    avg_ltv = data["LTV"].mean()
+    latest_month = data["Month"].iloc[-1]
+    latest_revenue = data["Revenue"].iloc[-1]
+    latest_users = data["ActiveUsers"].iloc[-1]
 
-# --- Strategic Insight Simulation ---
-st.subheader("🧭 Strategic Scenario Analysis")
-churn_input = st.slider("Simulate Churn Improvement (%)", min_value=-2.0, max_value=2.0, step=0.1, value=0.0)
-df['AdjustedLTV'] = (df['Revenue'] / df['ActiveUsers']) * (1 / ((df['ChurnRate'] + churn_input) / 100))
-avg_change = ((df['AdjustedLTV'].mean() - df['LTV'].mean()) / df['LTV'].mean()) * 100
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💰 Total Revenue", f"${total_revenue:,.0f}")
+    col2.metric("📈 Avg LTV", f"${avg_ltv:,.0f}")
+    col3.metric("💧 Avg Churn Rate", f"{avg_churn:.2f}%")
 
-if churn_input != 0:
-    if churn_input < 0:
-        st.success(f"💡 Improving churn by {abs(churn_input):.1f}% increases LTV by {avg_change:.2f}%")
-    else:
-        st.warning(f"⚠️ Increasing churn by {churn_input:.1f}% decreases LTV by {abs(avg_change):.2f}%")
+    col4, col5, col6 = st.columns(3)
+    col4.metric("🗓️ Latest Month", latest_month)
+    col5.metric("👥 Active Users", f"{latest_users:,}")
+    col6.metric("💵 Revenue (Latest)", f"${latest_revenue:,}")
 
-st.line_chart(df.set_index('Month')[['LTV', 'AdjustedLTV']])
+    st.divider()
 
-# --- Insights ---
-st.subheader("🧠 Business Insights")
-st.write("""
-- **Revenue** shows consistent growth, averaging 10% month-on-month.  
-- **LTV consistently exceeds CAC**, signaling strong unit economics.  
-- **Low churn (<5%)** ensures retention-driven profitability.  
-- The simulation above shows how even a **1% churn improvement** can boost LTV significantly — 
-  the kind of decision insight a Founder’s Office tracks closely.
-""")
+    # -------------------------------
+    # 📈 Charts
+    # -------------------------------
+    st.subheader("📈 Revenue and Active Users Over Time")
+    st.line_chart(data.set_index("Month")[["Revenue", "ActiveUsers"]])
 
-# --- Footer ---
+    st.subheader("💹 CAC vs LTV Comparison")
+    st.line_chart(data.set_index("Month")[["CAC", "LTV"]])
+
+    st.subheader("⚠️ Churn Rate Trend")
+    st.line_chart(data.set_index("Month")[["ChurnRate"]])
+
+    # -------------------------------
+    # 🧠 Insights
+    # -------------------------------
+    st.subheader("🧠 Quick Insights")
+    st.write(f"""
+    - The dashboard is synced live with Google Sheets — updates appear within **5 seconds**.
+    - **LTV/CAC ratio** shows customer monetization efficiency.
+    - **Low churn rate** = better retention. **High growth rate** = improved user acquisition.
+    """)
+
+    st.dataframe(data, use_container_width=True)
+    st.caption(f"Data auto-refreshes every 5 seconds. Refresh count: {count}")
+else:
+    st.warning("⚠️ No data found or failed to load. Please check your Google Sheet link.")
+
+# -------------------------------
+# 🧾 Footer
+# -------------------------------
 st.markdown("---")
-st.caption("Built by Saurabh Moharir | MDI Gurgaon | Founder’s Office MT Project")
+st.caption("🚀 Built by **Saurabh Moharir** | PGDM (MDI Gurgaon) | Ex-Railways Engineer")
